@@ -13,6 +13,9 @@ Run:
 """
 
 import streamlit as st
+from cloud_secrets import bootstrap
+bootstrap()
+
 import bcrypt
 
 from config import PORTAL2_VOLUNTEER_USERNAMES, PORTAL2_SHARED_PASSWORD_HASH

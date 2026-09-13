@@ -11,6 +11,9 @@ Run:
 """
 
 import streamlit as st
+from cloud_secrets import bootstrap
+bootstrap()
+
 import bcrypt
 
 from config import ADMIN_PASSWORD_HASH

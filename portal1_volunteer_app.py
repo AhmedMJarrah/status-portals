@@ -13,6 +13,9 @@ Run:
 """
 
 import streamlit as st
+from cloud_secrets import bootstrap
+bootstrap()
+
 import bcrypt
 
 from config import PORTAL1_PASSWORD_HASH
