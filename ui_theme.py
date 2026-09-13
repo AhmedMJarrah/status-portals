@@ -121,13 +121,19 @@ def inject_css() -> None:
     .context-grid {{
         display: grid;
         grid-template-columns: repeat(2, 1fr);
-        gap: 0.6rem 1.5rem;
-        background: #F7FAFC;
-        border-radius: 12px;
-        padding: 0.9rem 1.1rem;
+        gap: 0.7rem;
         margin-bottom: 0.8rem;
     }}
-    .context-item {{ display: flex; flex-direction: column; gap: 0.1rem; }}
+    .context-item {{
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        background: #FFFFFF;
+        border-radius: 12px;
+        padding: 0.6rem 0.9rem;
+        box-shadow: 0 1px 6px rgba(20, 40, 70, 0.06);
+        border-right: 4px solid {ACCENT};
+    }}
     .context-label {{ font-size: 0.75rem; color: #6B7A90; font-weight: 700; }}
     .context-value {{ font-size: 0.92rem; color: #142846; }}
     @media (max-width: 640px) {{

@@ -30,10 +30,10 @@ STATUS_FIELD = "Status"
 STATUS_PLACEHOLDER = "اختر..."
 STATUS_OPTIONS = [STATUS_PLACEHOLDER, "ساري", "غير ساري"]
 
-# Fields shown as read-only context (never asked for, since they're
-# either already displayed as the button's own title/subtitle, or are
-# structural). Everything else that's non-empty becomes a context chip.
-CONTEXT_EXCLUDED = {"Leg_Name", "Year"}
+# Fields shown as read-only context (never asked for — Leg_Name is
+# already the dropdown's own selected value/heading). Everything else
+# that's non-empty becomes its own context card.
+CONTEXT_EXCLUDED = {"Leg_Name"}
 
 FIELD_LABELS = {
     "Status": "الحالة", "URL": "الرابط", "Magazine_Date": "تاريخ الجريدة",
@@ -137,47 +137,76 @@ st.progress(done / total if total else 0)
 st.markdown("<br>", unsafe_allow_html=True)
 
 DROPDOWN_PLACEHOLDER = "— اختر قانون —"
+row_by_id = {r.get("record_id"): r for r in rows}
+
+# When two+ records share the exact same Leg_Name, Streamlit's own
+# selectbox loses track of which one is selected across reruns (it
+# appears to match by rendered text internally) — confirmed directly,
+# not a guess. The fix is an invisible zero-width space appended to
+# repeats: it disambiguates them for Streamlit's own bookkeeping while
+# staying 100% invisible on screen. It's never part of what gets
+# copied — the dedicated copy box below always reads the record's real
+# Leg_Name straight from the row, untouched.
+_seen_name_counts: dict = {}
+_dropdown_label_by_id: dict = {}
+for _r in rows:
+    _base_name = _r.get("Leg_Name", "")
+    _n = _seen_name_counts.get(_base_name, 0)
+    _seen_name_counts[_base_name] = _n + 1
+    _dropdown_label_by_id[_r.get("record_id")] = _base_name + ("\u200b" * _n)
 
 
-def option_label(row) -> str:
-    if row is None:
-        return DROPDOWN_PLACEHOLDER
-    icon = "✅" if is_true(row.get("completed")) else "⏳"
-    return f"{icon}  {row.get('Leg_Name', '')} — سنة {row.get('Year', '')}"
+def option_label(record_id) -> str:
+    return _dropdown_label_by_id.get(record_id, DROPDOWN_PLACEHOLDER)
 
 
-selected_row = st.selectbox(
+# The selectbox's VALUE is the unique record_id (a plain string), not
+# the row dict itself, so lookups are always exact regardless of
+# duplicate names.
+selected_id = st.selectbox(
     "اختر القانون يلي بدك تشتغل عليه",
-    options=[None] + rows,
+    options=list(row_by_id.keys()),
+    index=0 if rows else None,  # land on the first record immediately, not an empty placeholder
     format_func=option_label,
     label_visibility="collapsed",
+    key="law_select",
 )
+selected_row = row_by_id.get(selected_id)
 
 if selected_row is not None:
     row = selected_row
     rid = row.get("record_id")
     empties = data.empty_fields(row)
+    row_is_done = is_true(row.get("completed"))
 
-    with st.container(border=True):
-        context_items = [
-            (k, format_context_value(k, v)) for k, v in row.items()
-            if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
-            and k not in CONTEXT_EXCLUDED and str(v).strip()
-        ]
-        if context_items:
-            chips = "".join(
-                f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
-                f"<span class='context-value'>{v}</span></div>"
-                for k, v in context_items
-            )
-            st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<span class='badge {'badge-done' if row_is_done else 'badge-pending'}'>"
+        f"{'مكتمل ✓' if row_is_done else 'قيد الانتظار'}</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption("انسخ اسم القانون بالضبط زي ما هو للبحث عنه بمصدر خارجي:")
+    st.code(row.get("Leg_Name", ""), language=None)
 
-        filled_values = {}
-        if not empties:
-            st.info("كل الحقول معبّاة بهاد السجل.")
-        else:
-            st.markdown("**عبّي الحقول الناقصة:**")
-            for field in empties:
+    context_items = [
+        (k, format_context_value(k, v)) for k, v in row.items()
+        if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
+        and k not in CONTEXT_EXCLUDED and str(v).strip()
+    ]
+    if context_items:
+        chips = "".join(
+            f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
+            f"<span class='context-value'>{v}</span></div>"
+            for k, v in context_items
+        )
+        st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
+
+    filled_values = {}
+    if not empties:
+        st.info("كل الحقول معبّاة بهاد السجل.")
+    else:
+        st.markdown("**عبّي الحقول الناقصة:**")
+        for field in empties:
+            with st.container(border=True):
                 if field == STATUS_FIELD:
                     filled_values[field] = st.radio(
                         field_label(field), STATUS_OPTIONS, key=f"{rid}_{field}", horizontal=True,
@@ -187,12 +216,12 @@ if selected_row is not None:
                         field_label(field), key=f"{rid}_{field}", placeholder=f"أدخل {field_label(field)}...",
                     )
 
-        if st.button("💾 حفظ", key=f"save_{rid}", use_container_width=True, type="primary"):
-            if filled_values.get(STATUS_FIELD) == STATUS_PLACEHOLDER:
-                st.warning("لازم تختار الحالة: ساري أو غير ساري")
-            else:
-                updated_row = dict(row)
-                updated_row.update(filled_values)
-                data.save_row(username, updated_row, display_name)
-                st.success("تم الحفظ!")
-                st.rerun()
+    if st.button("💾 حفظ", key=f"save_{rid}", use_container_width=True, type="primary"):
+        if filled_values.get(STATUS_FIELD) == STATUS_PLACEHOLDER:
+            st.warning("لازم تختار الحالة: ساري أو غير ساري")
+        else:
+            updated_row = dict(row)
+            updated_row.update(filled_values)
+            data.save_row(username, updated_row, display_name)
+            st.success("تم الحفظ!")
+            st.rerun()
