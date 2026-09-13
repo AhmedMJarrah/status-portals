@@ -19,7 +19,7 @@ import bcrypt
 from config import ADMIN_PASSWORD_HASH
 import portal1_data as data
 from gsheets_client import is_true
-from ui_theme import inject_css, inject_login_layout, hero, badge
+from ui_theme import inject_css, inject_login_layout, hero, badge, logout_button
 
 st.set_page_config(page_title="لوحة تحكم — المواد", page_icon="📊", layout="wide")
 inject_css()
@@ -51,6 +51,7 @@ if not st.session_state.admin_authenticated:
 
 if st.button("↻ تحديث البيانات"):
     st.rerun()
+logout_button()
 
 progress_rows = data.get_progress_rows()
 total = len(progress_rows)

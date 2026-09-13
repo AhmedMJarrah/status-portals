@@ -21,7 +21,7 @@ import bcrypt
 from config import PORTAL2_VOLUNTEER_USERNAMES, PORTAL2_SHARED_PASSWORD_HASH
 import portal2_data as data
 from gsheets_client import is_true
-from ui_theme import inject_css, inject_login_layout, hero, badge
+from ui_theme import inject_css, inject_login_layout, hero, ACCENT, SUCCESS, logout_button
 
 st.set_page_config(page_title="بوابة تعبئة البيانات", page_icon="✨", layout="wide")
 inject_css()
@@ -30,14 +30,23 @@ STATUS_FIELD = "Status"
 STATUS_PLACEHOLDER = "اختر..."
 STATUS_OPTIONS = [STATUS_PLACEHOLDER, "ساري", "غير ساري"]
 
+# Fields shown as read-only context (never asked for, since they're
+# either already displayed as the button's own title/subtitle, or are
+# structural). Everything else that's non-empty becomes a context chip.
+CONTEXT_EXCLUDED = {"Leg_Name", "Year"}
+
 FIELD_LABELS = {
     "Status": "الحالة", "URL": "الرابط", "Magazine_Date": "تاريخ الجريدة",
     "Magazine_Number": "رقم الجريدة", "Magazine_Page": "رقم الصفحة",
-    "Publication": "بيان النشر", "Replaced_For": "بديل عن",
+    "Publication": "بيان النشر",
+    # ASSUMPTION — best-guess meaning, please correct the wording if the
+    # actual direction differs in your schema:
+    "Replaced_For": "بديل عن (القانون القديم الذي حلّ هذا القانون محلّه)",
+    "Replaced_By": "استُبدل بـ (القانون الجديد الذي حلّ محل هذا القانون لاحقًا)",
     "Canceled_By": "أُلغي بواسطة", "Issue_Date": "تاريخ الإصدار",
     "Active_Date": "تاريخ النفاذ", "End_Date": "تاريخ الانتهاء",
-    "Replaced_By": "استُبدل بـ", "Leg_Number": "رقم التشريع",
-    "Article_Count": "عدد المواد",
+    "Leg_Number": "رقم التشريع", "Article_Count": "عدد المواد",
+    "is_amendment": "نوع التشريع",
 }
 
 
@@ -45,21 +54,29 @@ def field_label(key: str) -> str:
     return FIELD_LABELS.get(key, key)
 
 
+def format_context_value(key: str, value):
+    if key == "is_amendment":
+        return "تعديل" if str(value).strip().lower() in ("true", "1") else "أساسي"
+    return value
+
+
 AVATAR_ICONS = ["🦋", "🌟", "🌿", "🔥", "🌊"]
 
 # ------------------------------------------------------------------
-# Login — pick your avatar, then your password
+# Login — pick your slot, tell us your name, then your password
 # ------------------------------------------------------------------
 
 if "username" not in st.session_state:
     st.session_state.username = None
+if "display_name" not in st.session_state:
+    st.session_state.display_name = ""
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
     inject_login_layout()
     with st.container(border=True):
-        hero("✨", "بوابة تعبئة البيانات", "اختر اسمك وابدأ")
+        hero("✨", "بوابة تعبئة البيانات", "اختر حسابك وابدأ")
 
         cols = st.columns(len(PORTAL2_VOLUNTEER_USERNAMES))
         for i, uname in enumerate(PORTAL2_VOLUNTEER_USERNAMES):
@@ -80,20 +97,27 @@ if not st.session_state.authenticated:
 
         if st.session_state.username:
             st.markdown(
-                f"<p style='text-align:center; margin-top:1.2rem; font-size:1.05rem;'>"
-                f"أهلاً <b>{st.session_state.username}</b> 👋</p>",
+                "<p style='text-align:center; margin-top:1.2rem; font-size:1.05rem;'>"
+                "تمام ✅ — قبل ما نكمل، شو اسمك؟</p>",
                 unsafe_allow_html=True,
+            )
+            display_name_input = st.text_input(
+                "اسمك", label_visibility="collapsed", placeholder="اكتب اسمك هون...",
             )
             pw = st.text_input("كلمة المرور", type="password", label_visibility="collapsed", placeholder="كلمة المرور")
             if st.button("دخول", use_container_width=True, type="primary"):
-                if bcrypt.checkpw(pw.encode("utf-8"), PORTAL2_SHARED_PASSWORD_HASH.encode("utf-8")):
+                if not display_name_input.strip():
+                    st.warning("لازم تكتب اسمك قبل الدخول")
+                elif bcrypt.checkpw(pw.encode("utf-8"), PORTAL2_SHARED_PASSWORD_HASH.encode("utf-8")):
                     st.session_state.authenticated = True
+                    st.session_state.display_name = display_name_input.strip()
                     st.rerun()
                 else:
                     st.error("كلمة المرور غير صحيحة")
     st.stop()
 
 username = st.session_state.username
+display_name = st.session_state.display_name
 
 # ------------------------------------------------------------------
 # Main app
@@ -104,10 +128,11 @@ done, total = data.progress_summary(username)
 
 st.markdown(f"""
 <div style='margin-bottom:0.5rem;'>
-    <h1 style='color:#142846; margin-bottom:0.2rem;'>✨ أهلاً {username}</h1>
+    <h1 style='color:#142846; margin-bottom:0.2rem;'>✨ أهلاً {display_name}</h1>
     <p style='color:#6B7A90;'>أنجزت {done} من {total} سجل</p>
 </div>
 """, unsafe_allow_html=True)
+logout_button()
 st.progress(done / total if total else 0)
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -115,29 +140,44 @@ for row in rows:
     rid = row.get("record_id")
     row_is_done = is_true(row.get("completed"))
     empties = data.empty_fields(row)
-
-    st.markdown(f"""
-    <div class='{"card done" if row_is_done else "card"}'>
-        <div class='card-title'>{row.get('Leg_Name', '')}</div>
-        <div class='card-meta'>سنة {row.get('Year', '')} &nbsp; {badge(row_is_done)} &nbsp; · {len(empties)} حقل فاضي</div>
-    </div>
-    """, unsafe_allow_html=True)
-
     is_open = st.session_state.get("selected_record_id") == rid
-    if st.button("إغلاق" if is_open else "فتح للتعبئة", key=f"toggle_{rid}"):
+
+    label = f"{'✅' if row_is_done else '⏳'}  {row.get('Leg_Name', '')} — سنة {row.get('Year', '')}"
+
+    # Scope a green-fill rule to just THIS button by pairing it with an
+    # invisible marker div right before it (CSS adjacent-sibling match).
+    if row_is_done:
+        st.markdown(f"""
+        <style>
+        div#law-marker-{rid} + div .stButton > button {{
+            background-color: {SUCCESS} !important;
+            color: #FFFFFF !important;
+            border-color: {SUCCESS} !important;
+        }}
+        </style>
+        <div id='law-marker-{rid}'></div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"<div id='law-marker-{rid}'></div>", unsafe_allow_html=True)
+
+    if st.button(label, key=f"law_{rid}", use_container_width=True):
         st.session_state.selected_record_id = None if is_open else rid
         st.rerun()
 
-    if st.session_state.get("selected_record_id") == rid:
+    if is_open:
         with st.container(border=True):
             context_items = [
-                (k, v) for k, v in row.items()
+                (k, format_context_value(k, v)) for k, v in row.items()
                 if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
-                and str(v).strip()
+                and k not in CONTEXT_EXCLUDED and str(v).strip()
             ]
             if context_items:
-                context_html = " · ".join(f"<b>{field_label(k)}:</b> {v}" for k, v in context_items)
-                st.markdown(f"<div class='subtle-box'>{context_html}</div>", unsafe_allow_html=True)
+                chips = "".join(
+                    f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
+                    f"<span class='context-value'>{v}</span></div>"
+                    for k, v in context_items
+                )
+                st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
 
             filled_values = {}
             if not empties:
@@ -160,6 +200,6 @@ for row in rows:
                 else:
                     updated_row = dict(row)
                     updated_row.update(filled_values)
-                    data.save_row(username, updated_row, username)
+                    data.save_row(username, updated_row, display_name)
                     st.success("تم الحفظ!")
                     st.rerun()

@@ -21,7 +21,7 @@ import bcrypt
 from config import PORTAL1_PASSWORD_HASH
 import portal1_data as data
 from gsheets_client import is_true
-from ui_theme import inject_css, inject_login_layout, hero, badge
+from ui_theme import inject_css, inject_login_layout, hero, badge, logout_button
 
 st.set_page_config(page_title="بوابة تعبئة المواد", page_icon="📜", layout="wide")
 inject_css()
@@ -67,6 +67,7 @@ st.markdown(f"""
     <p style='color:#6B7A90;'>أنجزت {done} من {total} قانون</p>
 </div>
 """, unsafe_allow_html=True)
+logout_button()
 st.progress(done / total if total else 0)
 st.markdown("<br>", unsafe_allow_html=True)
 

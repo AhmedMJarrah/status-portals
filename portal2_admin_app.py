@@ -18,7 +18,7 @@ import bcrypt
 from config import ADMIN_PASSWORD_HASH, PORTAL2_VOLUNTEER_USERNAMES
 import portal2_data as data
 from gsheets_client import is_true
-from ui_theme import inject_css, inject_login_layout, hero, badge
+from ui_theme import inject_css, inject_login_layout, hero, badge, logout_button
 
 st.set_page_config(page_title="لوحة تحكم — تعبئة البيانات", page_icon="📊", layout="wide")
 inject_css()
@@ -50,6 +50,7 @@ if not st.session_state.admin_authenticated:
 
 if st.button("↻ تحديث البيانات"):
     st.rerun()
+logout_button()
 
 st.markdown("<h1 style='color:#142846;'>📊 لوحة تحكم — بوابة البيانات</h1>", unsafe_allow_html=True)
 

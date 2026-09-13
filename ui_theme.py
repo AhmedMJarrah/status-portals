@@ -117,6 +117,28 @@ def inject_css() -> None:
     }}
     .subtle-box {{ background:#F7FAFC; border-radius:10px; padding:0.6rem 1rem; margin-bottom:0.5rem; font-size:0.92rem; }}
 
+    /* ---- Context grid (record details shown for reference) --------- */
+    .context-grid {{
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.6rem 1.5rem;
+        background: #F7FAFC;
+        border-radius: 12px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 0.8rem;
+    }}
+    .context-item {{ display: flex; flex-direction: column; gap: 0.1rem; }}
+    .context-label {{ font-size: 0.75rem; color: #6B7A90; font-weight: 700; }}
+    .context-value {{ font-size: 0.92rem; color: #142846; }}
+    @media (max-width: 640px) {{
+        .context-grid {{ grid-template-columns: 1fr; }}
+    }}
+
+    /* Invisible marker used to scope a CSS rule to the button that
+       immediately follows it (see portal2_volunteer_app.py) — lets a
+       specific law-button turn green when its record is completed. */
+    div[id^="law-marker-"] {{ display: none; }}
+
     header[data-testid="stHeader"] {{ background: transparent; }}
     #MainMenu, footer {{ visibility: hidden; }}
     </style>
@@ -166,3 +188,11 @@ def badge(is_done: bool) -> str:
         "<span class='badge badge-done'>مكتمل ✓</span>" if is_done
         else "<span class='badge badge-pending'>قيد الانتظار</span>"
     )
+
+
+def logout_button(label: str = "🚪 تسجيل خروج") -> None:
+    """Clears all session state and reruns — a clean slate identical
+    to a fresh page load, so the next person can log in as themselves."""
+    if st.button(label, key="logout_btn"):
+        st.session_state.clear()
+        st.rerun()
