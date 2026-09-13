@@ -1,0 +1,11 @@
+secrets/
+.status/
+status/
+.env
+notes.txt
+__pycache__/
+logs/
+outputs/ 
+logs/ 
+RefLaws_v07_CorrMeta/ 
+RefLaws_merged_*.json law_status_verification.txt
