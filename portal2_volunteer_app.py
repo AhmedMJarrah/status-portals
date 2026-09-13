@@ -21,7 +21,7 @@ import bcrypt
 from config import PORTAL2_VOLUNTEER_USERNAMES, PORTAL2_SHARED_PASSWORD_HASH
 import portal2_data as data
 from gsheets_client import is_true
-from ui_theme import inject_css, inject_login_layout, hero, ACCENT, SUCCESS, logout_button
+from ui_theme import inject_css, inject_login_layout, hero, logout_button
 
 st.set_page_config(page_title="بوابة تعبئة البيانات", page_icon="✨", layout="wide")
 inject_css()
@@ -136,70 +136,63 @@ logout_button()
 st.progress(done / total if total else 0)
 st.markdown("<br>", unsafe_allow_html=True)
 
-for row in rows:
+DROPDOWN_PLACEHOLDER = "— اختر قانون —"
+
+
+def option_label(row) -> str:
+    if row is None:
+        return DROPDOWN_PLACEHOLDER
+    icon = "✅" if is_true(row.get("completed")) else "⏳"
+    return f"{icon}  {row.get('Leg_Name', '')} — سنة {row.get('Year', '')}"
+
+
+selected_row = st.selectbox(
+    "اختر القانون يلي بدك تشتغل عليه",
+    options=[None] + rows,
+    format_func=option_label,
+    label_visibility="collapsed",
+)
+
+if selected_row is not None:
+    row = selected_row
     rid = row.get("record_id")
-    row_is_done = is_true(row.get("completed"))
     empties = data.empty_fields(row)
-    is_open = st.session_state.get("selected_record_id") == rid
 
-    label = f"{'✅' if row_is_done else '⏳'}  {row.get('Leg_Name', '')} — سنة {row.get('Year', '')}"
+    with st.container(border=True):
+        context_items = [
+            (k, format_context_value(k, v)) for k, v in row.items()
+            if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
+            and k not in CONTEXT_EXCLUDED and str(v).strip()
+        ]
+        if context_items:
+            chips = "".join(
+                f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
+                f"<span class='context-value'>{v}</span></div>"
+                for k, v in context_items
+            )
+            st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
 
-    # Scope a green-fill rule to just THIS button by pairing it with an
-    # invisible marker div right before it (CSS adjacent-sibling match).
-    if row_is_done:
-        st.markdown(f"""
-        <style>
-        div#law-marker-{rid} + div .stButton > button {{
-            background-color: {SUCCESS} !important;
-            color: #FFFFFF !important;
-            border-color: {SUCCESS} !important;
-        }}
-        </style>
-        <div id='law-marker-{rid}'></div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div id='law-marker-{rid}'></div>", unsafe_allow_html=True)
-
-    if st.button(label, key=f"law_{rid}", use_container_width=True):
-        st.session_state.selected_record_id = None if is_open else rid
-        st.rerun()
-
-    if is_open:
-        with st.container(border=True):
-            context_items = [
-                (k, format_context_value(k, v)) for k, v in row.items()
-                if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
-                and k not in CONTEXT_EXCLUDED and str(v).strip()
-            ]
-            if context_items:
-                chips = "".join(
-                    f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
-                    f"<span class='context-value'>{v}</span></div>"
-                    for k, v in context_items
-                )
-                st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
-
-            filled_values = {}
-            if not empties:
-                st.info("كل الحقول معبّاة بهاد السجل.")
-            else:
-                st.markdown("**عبّي الحقول الناقصة:**")
-                for field in empties:
-                    if field == STATUS_FIELD:
-                        filled_values[field] = st.radio(
-                            field_label(field), STATUS_OPTIONS, key=f"{rid}_{field}", horizontal=True,
-                        )
-                    else:
-                        filled_values[field] = st.text_input(
-                            field_label(field), key=f"{rid}_{field}", placeholder=f"أدخل {field_label(field)}...",
-                        )
-
-            if st.button("💾 حفظ", key=f"save_{rid}", use_container_width=True, type="primary"):
-                if filled_values.get(STATUS_FIELD) == STATUS_PLACEHOLDER:
-                    st.warning("لازم تختار الحالة: ساري أو غير ساري")
+        filled_values = {}
+        if not empties:
+            st.info("كل الحقول معبّاة بهاد السجل.")
+        else:
+            st.markdown("**عبّي الحقول الناقصة:**")
+            for field in empties:
+                if field == STATUS_FIELD:
+                    filled_values[field] = st.radio(
+                        field_label(field), STATUS_OPTIONS, key=f"{rid}_{field}", horizontal=True,
+                    )
                 else:
-                    updated_row = dict(row)
-                    updated_row.update(filled_values)
-                    data.save_row(username, updated_row, display_name)
-                    st.success("تم الحفظ!")
-                    st.rerun()
+                    filled_values[field] = st.text_input(
+                        field_label(field), key=f"{rid}_{field}", placeholder=f"أدخل {field_label(field)}...",
+                    )
+
+        if st.button("💾 حفظ", key=f"save_{rid}", use_container_width=True, type="primary"):
+            if filled_values.get(STATUS_FIELD) == STATUS_PLACEHOLDER:
+                st.warning("لازم تختار الحالة: ساري أو غير ساري")
+            else:
+                updated_row = dict(row)
+                updated_row.update(filled_values)
+                data.save_row(username, updated_row, display_name)
+                st.success("تم الحفظ!")
+                st.rerun()

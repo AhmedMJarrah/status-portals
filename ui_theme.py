@@ -134,11 +134,6 @@ def inject_css() -> None:
         .context-grid {{ grid-template-columns: 1fr; }}
     }}
 
-    /* Invisible marker used to scope a CSS rule to the button that
-       immediately follows it (see portal2_volunteer_app.py) — lets a
-       specific law-button turn green when its record is completed. */
-    div[id^="law-marker-"] {{ display: none; }}
-
     header[data-testid="stHeader"] {{ background: transparent; }}
     #MainMenu, footer {{ visibility: hidden; }}
     </style>
