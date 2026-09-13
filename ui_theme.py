@@ -140,6 +140,12 @@ def inject_css() -> None:
         .context-grid {{ grid-template-columns: 1fr; }}
     }}
 
+    .section-title {{
+        font-weight: 900; font-size: 1rem; color: #142846;
+        margin: 1.1rem 0 0.6rem; padding-right: 0.6rem;
+        border-right: 4px solid {ACCENT};
+    }}
+
     header[data-testid="stHeader"] {{ background: transparent; }}
     #MainMenu, footer {{ visibility: hidden; }}
     </style>

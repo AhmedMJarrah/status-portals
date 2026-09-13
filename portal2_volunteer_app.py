@@ -46,12 +46,40 @@ FIELD_LABELS = {
     "Canceled_By": "أُلغي بواسطة", "Issue_Date": "تاريخ الإصدار",
     "Active_Date": "تاريخ النفاذ", "End_Date": "تاريخ الانتهاء",
     "Leg_Number": "رقم التشريع", "Article_Count": "عدد المواد",
-    "is_amendment": "نوع التشريع",
+    "is_amendment": "نوع التشريع", "Year": "السنة",
 }
+
+FIELD_ICONS = {
+    "Status": "🚦", "URL": "🔗", "Magazine_Date": "🗓️", "Magazine_Number": "📰",
+    "Magazine_Page": "📄", "Publication": "📢", "Replaced_For": "🔁", "Replaced_By": "🔀",
+    "Canceled_By": "🛑", "Issue_Date": "📅", "Active_Date": "✅", "End_Date": "⏹️",
+    "Leg_Number": "🔢", "Article_Count": "📚", "is_amendment": "🏷️", "Year": "📆",
+}
+
+# Leg_Number + Year read together naturally ("رقم 31 لسنة 1976"), so
+# they're placed side by side; the rest follows a sensible reading
+# order instead of whatever order the source JSON happened to have.
+FIELD_ORDER = [
+    "Leg_Number", "Year", "Status", "Issue_Date", "Active_Date", "End_Date",
+    "Magazine_Date", "Magazine_Number", "Magazine_Page", "Publication",
+    "Replaced_For", "Replaced_By", "Canceled_By", "Article_Count", "is_amendment", "URL",
+]
+
+# The three fields most worth a volunteer's time — shown as a banner
+# above the fill-in form.
+PRIORITY_FIELDS = ["Status", "Issue_Date", "End_Date"]
 
 
 def field_label(key: str) -> str:
     return FIELD_LABELS.get(key, key)
+
+
+def field_icon(key: str) -> str:
+    return FIELD_ICONS.get(key, "•")
+
+
+def sort_by_field_order(keys) -> list:
+    return sorted(keys, key=lambda k: FIELD_ORDER.index(k) if k in FIELD_ORDER else len(FIELD_ORDER))
 
 
 def format_context_value(key: str, value):
@@ -96,24 +124,42 @@ if not st.session_state.authenticated:
                     st.rerun()
 
         if st.session_state.username:
-            st.markdown(
-                "<p style='text-align:center; margin-top:1.2rem; font-size:1.05rem;'>"
-                "تمام ✅ — قبل ما نكمل، شو اسمك؟</p>",
-                unsafe_allow_html=True,
-            )
-            display_name_input = st.text_input(
-                "اسمك", label_visibility="collapsed", placeholder="اكتب اسمك هون...",
-            )
-            pw = st.text_input("كلمة المرور", type="password", label_visibility="collapsed", placeholder="كلمة المرور")
-            if st.button("دخول", use_container_width=True, type="primary"):
-                if not display_name_input.strip():
-                    st.warning("لازم تكتب اسمك قبل الدخول")
-                elif bcrypt.checkpw(pw.encode("utf-8"), PORTAL2_SHARED_PASSWORD_HASH.encode("utf-8")):
-                    st.session_state.authenticated = True
-                    st.session_state.display_name = display_name_input.strip()
-                    st.rerun()
-                else:
-                    st.error("كلمة المرور غير صحيحة")
+            saved_name = data.get_saved_name(st.session_state.username)
+
+            if saved_name:
+                st.markdown(
+                    f"<p style='text-align:center; margin-top:1.2rem; font-size:1.05rem;'>"
+                    f"أهلاً {saved_name} 👋 — بس اكتب كلمة المرور</p>",
+                    unsafe_allow_html=True,
+                )
+                pw = st.text_input("كلمة المرور", type="password", label_visibility="collapsed", placeholder="كلمة المرور")
+                if st.button("دخول", use_container_width=True, type="primary"):
+                    if bcrypt.checkpw(pw.encode("utf-8"), PORTAL2_SHARED_PASSWORD_HASH.encode("utf-8")):
+                        st.session_state.authenticated = True
+                        st.session_state.display_name = saved_name
+                        st.rerun()
+                    else:
+                        st.error("كلمة المرور غير صحيحة")
+            else:
+                st.markdown(
+                    "<p style='text-align:center; margin-top:1.2rem; font-size:1.05rem;'>"
+                    "تمام ✅ — أول مرة بس، شو اسمك؟</p>",
+                    unsafe_allow_html=True,
+                )
+                display_name_input = st.text_input(
+                    "اسمك", label_visibility="collapsed", placeholder="اكتب اسمك هون...",
+                )
+                pw = st.text_input("كلمة المرور", type="password", label_visibility="collapsed", placeholder="كلمة المرور")
+                if st.button("دخول", use_container_width=True, type="primary"):
+                    if not display_name_input.strip():
+                        st.warning("لازم تكتب اسمك قبل الدخول")
+                    elif bcrypt.checkpw(pw.encode("utf-8"), PORTAL2_SHARED_PASSWORD_HASH.encode("utf-8")):
+                        st.session_state.authenticated = True
+                        st.session_state.display_name = display_name_input.strip()
+                        data.save_name(st.session_state.username, display_name_input.strip())
+                        st.rerun()
+                    else:
+                        st.error("كلمة المرور غير صحيحة")
     st.stop()
 
 username = st.session_state.username
@@ -184,19 +230,20 @@ if selected_row is not None:
         f"{'مكتمل ✓' if row_is_done else 'قيد الانتظار'}</span>",
         unsafe_allow_html=True,
     )
-    st.caption("انسخ اسم القانون بالضبط زي ما هو للبحث عنه بمصدر خارجي:")
     st.code(row.get("Leg_Name", ""), language=None)
 
-    context_items = [
-        (k, format_context_value(k, v)) for k, v in row.items()
+    st.markdown("<div class='section-title'>📋 بيانات القانون</div>", unsafe_allow_html=True)
+    context_keys = [
+        k for k, v in row.items()
         if k not in empties and k not in ("record_id", "completed", "entered_by", "entered_at")
         and k not in CONTEXT_EXCLUDED and str(v).strip()
     ]
-    if context_items:
+    context_keys = sort_by_field_order(context_keys)
+    if context_keys:
         chips = "".join(
-            f"<div class='context-item'><span class='context-label'>{field_label(k)}</span>"
-            f"<span class='context-value'>{v}</span></div>"
-            for k, v in context_items
+            f"<div class='context-item'><span class='context-label'>{field_icon(k)} {field_label(k)}</span>"
+            f"<span class='context-value'>{format_context_value(k, row.get(k))}</span></div>"
+            for k in context_keys
         )
         st.markdown(f"<div class='context-grid'>{chips}</div>", unsafe_allow_html=True)
 
@@ -204,16 +251,20 @@ if selected_row is not None:
     if not empties:
         st.info("كل الحقول معبّاة بهاد السجل.")
     else:
-        st.markdown("**عبّي الحقول الناقصة:**")
-        for field in empties:
+        st.markdown("<div class='section-title'>✏️ عبّي الحقول الناقصة</div>", unsafe_allow_html=True)
+        st.info("⭐ أهم شي تعبيه: **الحالة**، و**تاريخ الإصدار**، و**تاريخ الانتهاء** (لو كانت الحالة غير ساري).")
+        for field in sort_by_field_order(empties):
             with st.container(border=True):
+                star = "⭐ " if field in PRIORITY_FIELDS else ""
                 if field == STATUS_FIELD:
                     filled_values[field] = st.radio(
-                        field_label(field), STATUS_OPTIONS, key=f"{rid}_{field}", horizontal=True,
+                        f"{star}{field_icon(field)} {field_label(field)}", STATUS_OPTIONS,
+                        key=f"{rid}_{field}", horizontal=True,
                     )
                 else:
                     filled_values[field] = st.text_input(
-                        field_label(field), key=f"{rid}_{field}", placeholder=f"أدخل {field_label(field)}...",
+                        f"{star}{field_icon(field)} {field_label(field)}", key=f"{rid}_{field}",
+                        placeholder=f"أدخل {field_label(field)}...",
                     )
 
     if st.button("💾 حفظ", key=f"save_{rid}", use_container_width=True, type="primary"):

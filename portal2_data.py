@@ -13,12 +13,17 @@ from datetime import datetime
 import gspread
 
 from config import SPREADSHEET_ID_PORTAL2, SPREADSHEET_NAME_PORTAL2, PORTAL2_EXCLUDED_FROM_EDITING
-from gsheets_client import open_spreadsheet, read_all_rows, upsert_row_by_key, get_header, is_true
+from gsheets_client import open_spreadsheet, open_or_create_worksheet, read_all_rows, upsert_row_by_key, get_header, is_true
 
 # Columns a volunteer is never asked to fill even when blank — identity,
 # structural, or bookkeeping fields. Leg_Name IS a real sheet column
 # (context + merge-back key), just never offered as an editable input.
 _NEVER_FILLABLE = PORTAL2_EXCLUDED_FROM_EDITING | {"record_id", "completed", "entered_by", "entered_at"}
+
+# A tiny extra tab that just remembers each slot's display name, so a
+# volunteer is only ever asked their name once — not on every login.
+_NAMES_TAB = "_volunteer_names"
+_NAMES_COLUMNS = ["username", "display_name"]
 
 
 def _spreadsheet():
@@ -63,3 +68,20 @@ def progress_summary(username: str) -> tuple:
     total = len(rows)
     done = sum(1 for r in rows if is_true(r.get("completed")))
     return done, total
+
+
+def _names_ws():
+    return open_or_create_worksheet(_spreadsheet(), _NAMES_TAB, _NAMES_COLUMNS)
+
+
+def get_saved_name(username: str) -> str:
+    """The display name this slot used last time, or '' if this is
+    their first-ever login."""
+    rows = read_all_rows(_names_ws())
+    match = next((r for r in rows if r.get("username") == username), None)
+    return match.get("display_name", "") if match else ""
+
+
+def save_name(username: str, display_name: str) -> None:
+    upsert_row_by_key(_names_ws(), _NAMES_COLUMNS, "username",
+                       {"username": username, "display_name": display_name})
